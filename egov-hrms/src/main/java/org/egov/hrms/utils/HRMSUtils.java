@@ -1,8 +1,9 @@
 package org.egov.hrms.utils;
 
 import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.Random;
 
 import org.egov.hrms.web.contract.EmployeeSearchCriteria;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,6 +12,12 @@ import org.springframework.util.CollectionUtils;
 
 @Service
 public class HRMSUtils {
+
+	private static final String UPPER_CASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+	private static final String LOWER_CASE = "abcdefghijklmnopqrstuvwxyz";
+	private static final String DIGITS = "0123456789";
+
+	private final SecureRandom random = new SecureRandom();
 	
 	@Value("${egov.hrms.default.pwd.length}")
 	private Integer pwdLength;
@@ -19,42 +26,40 @@ public class HRMSUtils {
 	private String allowedPasswordSpecialCharacters;
 	
 	/**
-	 * Generates random password for the user to login. Process:
-	 * 1. Takes a list of parameters for password
-	 * 2. Applies a random select logic and generates a password of constant length.
-	 * 3. The length of the password is configurable.
-	 * 
-	 * @param params
-	 * @return
+	 * Generates a random password that always satisfies egov-user's password
+	 * policy: at least one upper-case letter, one lower-case letter, one digit
+	 * and one of the allowed special characters, with no whitespace.
+	 *
+	 * One character is drawn from each required class, the rest are drawn from
+	 * the union of all classes, and the result is shuffled. All draws use
+	 * {@link SecureRandom}. The length is {@code egov.hrms.default.pwd.length}
+	 * (never fewer than the number of required classes).
+	 *
+	 * The password is deliberately NOT derived from the employee's details:
+	 * {@code params} is accepted only for caller compatibility and is ignored.
+	 *
+	 * @param params ignored
+	 * @return the generated password
 	 */
 	public String generatePassword(List<String> params) {
-		StringBuilder password = new StringBuilder();
-		SecureRandom random = new SecureRandom();
-		params.add(allowedPasswordSpecialCharacters);
-		try {
-			for(int i = 0; i < params.size(); i++) {
-				String param = params.get(i);
-				String val;
-				if(param.length() == 1)
-					val = param;
-				else
-					val = param.split("")[random.nextInt(param.length() - 1)];
-				if(val.equals(".") || val.equals("-") || val.equals(" "))
-					password.append("x");
-				else
-					password.append(val);
-				if(password.length() == pwdLength)
-					break;
-				else {
-					if(i == params.size() - 1)
-						i = 0;
-				}
-			}
-		}catch(Exception e) {
-			password.append("123456");
-		}
+		String[] requiredClasses = { UPPER_CASE, LOWER_CASE, DIGITS, allowedPasswordSpecialCharacters };
+		String allChars = String.join("", requiredClasses);
+		int length = Math.max(pwdLength, requiredClasses.length);
 
-		return password.toString().replaceAll("\\s+", "");
+		List<Character> chars = new ArrayList<>(length);
+		for (String charClass : requiredClasses)
+			chars.add(randomChar(charClass));
+		while (chars.size() < length)
+			chars.add(randomChar(allChars));
+		Collections.shuffle(chars, random);
+
+		StringBuilder password = new StringBuilder(length);
+		chars.forEach(password::append);
+		return password.toString();
+	}
+
+	private char randomChar(String chars) {
+		return chars.charAt(random.nextInt(chars.length()));
 	}
 
 	public boolean isAssignmentSearchReqd(EmployeeSearchCriteria criteria) {
